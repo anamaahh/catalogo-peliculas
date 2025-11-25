@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Catálogo de Películas </title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+ 
+    <nav class="bg-white shadow py-4">
+        <div class="container mx-auto px-4 flex justify-between items-center">
+            <div class="flex items-center">
+                <i class="fas fa-film text-blue-600 text-2xl mr-3"></i>
+                <h1 class="text-xl font-bold">Mi Catálogo</h1>
+            </div>
+            <div class="flex items-center">
+                <span id="user-email" class="text-sm mr-4"></span>
+                <button id="logout-btn" class="bg-red-500 text-white px-3 py-1 rounded text-sm">
+                    <i class="fas fa-sign-out-alt mr-1"></i>Salir
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!--Contenido-->
+    <div class="container mx-auto px-4 py-6">
+        <!--Agregar pelicula-->
+        <div class="bg-white rounded-lg shadow p-4 mb-6">
+            <h3 class="text-lg font-bold mb-4"> ¡Agrega una Película! </h3>
+            <form id="movie-form" class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                <input type="text" id="movie-title" placeholder="Título" required class="p-2 border rounded">
+                <input type="number" id="movie-year" placeholder="Año" min="1900" max="2030" required class="p-2 border rounded">
+                <input type="text" id="movie-director" placeholder="Director" required class="p-2 border rounded">
+                <input type="text" id="movie-genre" placeholder="Género" required class="p-2 border rounded">
+            </form>
+            <div class="flex gap-2 justify-end">
+                <button id="search-omdb" class="bg-yellow-500 text-white px-4 py-2 rounded text-sm">
+                    <i class="fas fa-search mr-1"></i>Buscar pelicula en OMDb
+                </button>
+                <button type="submit" form="movie-form" class="bg-blue-600 text-white px-4 py-2 rounded text-sm">
+                    <i class="fas fa-save mr-1"></i>Guardar Pelicula
+                </button>
+            </div>
+            <div id="form-message" class="mt-3 hidden p-2 rounded"></div>
+        </div>
+
+        <!--Lista de peliculas-->
+        <h3 class="text-lg font-bold mb-4">Tus Películas (<span id="movies-count">0</span>)</h3>
+        <div id="movies-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- peliculas -->
+        </div>
+
+        <div id="empty-state" class="text-center py-8 hidden">
+            <i class="fas fa-film text-4xl text-gray-400 mb-2"></i>
+            <p class="text-gray-500">No hay películas. Agrega la primera.</p>
+        </div>
+    </div>
+
+    <!--Detalles-->
+    <div id="movie-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-lg w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div id="movie-modal-content" class="p-4"></div>
+        </div>
+    </div>
+
+    <!--Editar-->
+    <div id="edit-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-lg w-full max-w-md">
+            <div class="p-4">
+                <h2 class="text-lg font-bold mb-3">Editar Película</h2>
+                <form id="edit-form" class="space-y-3">
+                    <input type="hidden" id="edit-id">
+                    <input type="text" id="edit-title" placeholder="Título" required class="w-full p-2 border rounded">
+                    <input type="number" id="edit-year" placeholder="Año" required class="w-full p-2 border rounded">
+                    <input type="text" id="edit-director" placeholder="Director" required class="w-full p-2 border rounded">
+                    <input type="text" id="edit-genre" placeholder="Género" required class="w-full p-2 border rounded">
+                    
+                    <!-- Botón de buscar en edición -->
+                    <div class="flex justify-between pt-2">
+                        <button type="button" id="search-omdb-edit" class="bg-yellow-500 text-white px-3 py-1 rounded text-sm">
+                            <i class="fas fa-search mr-1"></i>Buscar pelicula en OMDb
+                        </button>
+                    </div>
+
+                    <div class="flex gap-2 justify-end pt-3">
+                        <button type="button" onclick="app.hideEdit()" class="bg-gray-500 text-white px-3 py-1 rounded text-sm">Cancelar</button>
+                        <button type="submit" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">Actualizar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Firebase
+        firebase.initializeApp({
+            apiKey: "AIzaSyAV2CxG_nc2F-pdiQ2CiCEmBXUneH5RibE",
+            authDomain: "movie-catalogo.firebaseapp.com",
+            projectId: "movie-catalogo",
+            storageBucket: "movie-catalogo.firebasestorage.app",
+            messagingSenderId: "1022078354140",
+            appId: "1:1022078354140:web:487f91b170d16eecbb2a19"
+        });
+
+        const app = {
+            auth: firebase.auth(),
+            user: null,
+            movies: [],
+
+            async init() {
+                this.auth.onAuthStateChanged(user => {
+                    if (user) {
+                        this.user = user;
+                        document.getElementById('user-email').textContent = user.email;
+                        this.loadMovies();
+                    } else {
+                        window.location.href = '/login';
+                    }
+                });
+
+                document.getElementById('logout-btn').addEventListener('click', () => this.logout());
+                document.getElementById('movie-form').addEventListener('submit', (e) => this.addMovie(e));
+                document.getElementById('search-omdb').addEventListener('click', () => this.searchOMDb());
+                document.getElementById('search-omdb-edit').addEventListener('click', () => this.searchOMDbEdit()); // ✅ NUEVO
+                document.getElementById('edit-form').addEventListener('submit', (e) => this.updateMovie(e));
+            },
+
+            async logout() {
+                await this.auth.signOut();
+                await fetch('/api/logout', { method: 'POST' });
+                window.location.href = '/login';
+            },
+
+            async loadMovies() {
+                try {
+                    const res = await fetch('/api/movies');
+                    this.movies = await res.json();
+                    this.showMovies();
+                } catch (error) {
+                    this.showMsg('Error al cargar', 'error');
+                }
+            },
+
+            showMovies() {
+                const container = document.getElementById('movies-container');
+                const empty = document.getElementById('empty-state');
+                const count = document.getElementById('movies-count');
+
+                count.textContent = this.movies.length;
+
+                if (this.movies.length === 0) {
+                    container.innerHTML = '';
+                    empty.classList.remove('hidden');
+                    return;
+                }
+
+                empty.classList.add('hidden');
+                container.innerHTML = this.movies.map(movie => `
+                    <div class="bg-white rounded shadow p-3">
+                        <img src="${movie.poster || 'https://via.placeholder.com/200x300/4F46E5/FFFFFF?text=No+Poster'}" 
+                             class="w-full h-48 object-cover rounded mb-2 cursor-pointer"
+                             onclick="app.showDetail('${movie.id}')">
+                        <h4 class="font-bold">${movie.title}</h4>
+                        <p class="text-sm text-gray-600">${movie.year} • ${movie.director}</p>
+                        <p class="text-sm text-gray-600">${movie.genre}</p>
+                        <div class="flex justify-between mt-2">
+                            <button onclick="app.showDetail('${movie.id}')" class="text-blue-600 text-sm">Ver</button>
+                            <div class="flex gap-2">
+                                <button onclick="app.editMovie('${movie.id}')" class="text-green-600 text-sm">Editar</button>
+                                <button onclick="app.deleteMovie('${movie.id}')" class="text-red-600 text-sm">Eliminar</button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            },
+
+            async addMovie(e) {
+                e.preventDefault();
+                const data = {
+                    title: document.getElementById('movie-title').value,
+                    year: document.getElementById('movie-year').value,
+                    director: document.getElementById('movie-director').value,
+                    genre: document.getElementById('movie-genre').value
+                };
+
+                try {
+                    const res = await fetch('/api/movies', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    
+                    if (res.ok) {
+                        this.showMsg('Película agregada', 'success');
+                        document.getElementById('movie-form').reset();
+                        this.loadMovies();
+                    }
+                } catch (error) {
+                    this.showMsg('Error al agregar', 'error');
+                }
+            },
+
+            async searchOMDb() {
+                const title = document.getElementById('movie-title').value;
+                if (!title) {
+                    this.showMsg('Ingresa un título', 'error');
+                    return;
+                }
+
+                try {
+                    const res = await fetch('/api/search-omdb', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            title: title,
+                            year: document.getElementById('movie-year').value 
+                        })
+                    });
+                    
+                    const result = await res.json();
+                    if (result.success) {
+                        const m = result.data;
+                        document.getElementById('movie-title').value = m.title || '';
+                        document.getElementById('movie-year').value = m.year ? m.year.replace(/[^\d]/g, '') : '';
+                        document.getElementById('movie-director').value = m.director || '';
+                        document.getElementById('movie-genre').value = m.genre || '';
+                        this.showMsg('Película encontrada', 'success');
+                    }
+                } catch (error) {
+                    this.showMsg('Error en búsqueda', 'error');
+                }
+            },
+
+            //Buscar en OMDb desde editar
+            async searchOMDbEdit() {
+                const title = document.getElementById('edit-title').value;
+                if (!title) {
+                    this.showMsg('Ingresa un título', 'error');
+                    return;
+                }
+
+                try {
+                    const res = await fetch('/api/search-omdb', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            title: title,
+                            year: document.getElementById('edit-year').value 
+                        })
+                    });
+                    
+                    const result = await res.json();
+                    if (result.success) {
+                        const m = result.data;
+                        document.getElementById('edit-title').value = m.title || '';
+                        document.getElementById('edit-year').value = m.year ? m.year.replace(/[^\d]/g, '') : '';
+                        document.getElementById('edit-director').value = m.director || '';
+                        document.getElementById('edit-genre').value = m.genre || '';
+                        this.showMsg('Película encontrada', 'success');
+                    }
+                } catch (error) {
+                    this.showMsg('Error en búsqueda', 'error');
+                }
+            },
+
+            showDetail(movieId) {
+                const movie = this.movies.find(m => m.id === movieId);
+                if (!movie) return;
+
+                document.getElementById('movie-modal-content').innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <h2 class="text-xl font-bold">${movie.title}</h2>
+                        <button onclick="app.hideModal()" class="text-gray-500">✕</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <img src="${movie.poster || 'https://via.placeholder.com/300x450/4F46E5/FFFFFF?text=No+Poster'}" 
+                             class="w-full rounded">
+                        <div class="space-y-2">
+                            <p><strong>Año:</strong> ${movie.year}</p>
+                            <p><strong>Director:</strong> ${movie.director}</p>
+                            <p><strong>Género:</strong> ${movie.genre}</p>
+                            ${movie.imdbRating ? `<p><strong>Rating:</strong> ⭐ ${movie.imdbRating}</p>` : ''}
+                            ${movie.plot ? `<p><strong>Sinopsis:</strong> ${movie.plot}</p>` : ''}
+                        </div>
+                    </div>
+                    <div class="flex gap-2 justify-end mt-4">
+                        <button onclick="app.editMovie('${movie.id}')" class="bg-green-600 text-white px-3 py-1 rounded text-sm">Editar</button>
+                        <button onclick="app.deleteMovie('${movie.id}')" class="bg-red-600 text-white px-3 py-1 rounded text-sm">Eliminar</button>
+                    </div>
+                `;
+                document.getElementById('movie-modal').classList.remove('hidden');
+            },
+
+            hideModal() {
+                document.getElementById('movie-modal').classList.add('hidden');
+            },
+
+            editMovie(movieId) {
+                const movie = this.movies.find(m => m.id === movieId);
+                if (!movie) return;
+
+                document.getElementById('edit-id').value = movie.id;
+                document.getElementById('edit-title').value = movie.title;
+                document.getElementById('edit-year').value = movie.year;
+                document.getElementById('edit-director').value = movie.director;
+                document.getElementById('edit-genre').value = movie.genre;
+                document.getElementById('edit-modal').classList.remove('hidden');
+                this.hideModal();
+            },
+
+            hideEdit() {
+                document.getElementById('edit-modal').classList.add('hidden');
+            },
+
+            async updateMovie(e) {
+                e.preventDefault();
+                const id = document.getElementById('edit-id').value;
+                const data = {
+                    title: document.getElementById('edit-title').value,
+                    year: document.getElementById('edit-year').value,
+                    director: document.getElementById('edit-director').value,
+                    genre: document.getElementById('edit-genre').value
+                };
+
+                try {
+                    const res = await fetch(`/api/movies/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    
+                    if (res.ok) {
+                        this.showMsg('Película actualizada', 'success');
+                        this.hideEdit();
+                        this.loadMovies();
+                    }
+                } catch (error) {
+                    this.showMsg('Error al actualizar', 'error');
+                }
+            },
+
+            async deleteMovie(movieId) {
+                if (!confirm('¿Eliminar esta película?')) return;
+
+                try {
+                    await fetch(`/api/movies/${movieId}`, { method: 'DELETE' });
+                    this.showMsg('Película eliminada', 'success');
+                    this.loadMovies();
+                    this.hideModal();
+                } catch (error) {
+                    this.showMsg('Error al eliminar', 'error');
+                }
+            },
+
+            showMsg(text, type) {
+                const msg = document.getElementById('form-message');
+                msg.textContent = text;
+                msg.className = 'mt-3 p-2 rounded ' + 
+                    (type === 'success' ? 'bg-green-100 text-green-700' : 
+                     type === 'error' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700');
+                msg.classList.remove('hidden');
+                
+                setTimeout(() => msg.classList.add('hidden'), 3000);
+            }
+        };
+
+        app.init();
+    </script>
+</body>
+</html>

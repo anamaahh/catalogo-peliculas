@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nueva Contraseña - Mi Catálogo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-blue-500 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-6 rounded-lg shadow-md w-full max-w-sm">
+        <!--Inicio-->
+        <div class="text-center mb-6">
+            <i class="fas fa-lock text-blue-500 text-4xl mb-2"></i>
+            <h1 class="text-xl font-bold text-gray-800">Nueva Contraseña</h1>
+            <p class="text-gray-600 text-sm">Elige una nueva contraseña</p>
+        </div>
+
+        <!--Contraseña-->
+        <form id="formulario-reset" class="space-y-4">
+            <div>
+                <input type="password" id="nueva-contraseña" required minlength="6"
+                       class="w-full p-3 border border-gray-300 rounded"
+                       placeholder="Nueva contraseña">
+            </div>
+
+            <div>
+                <input type="password" id="confirmar-contraseña" required minlength="6"
+                       class="w-full p-3 border border-gray-300 rounded"
+                       placeholder="Confirmar contraseña">
+            </div>
+
+            
+            <div id="mensaje-error" class="hidden bg-red-100 text-red-700 p-2 rounded text-sm"></div>
+            <div id="mensaje-exito" class="hidden bg-green-100 text-green-700 p-2 rounded text-sm"></div>
+
+            <!--Boton-->
+            <button type="submit" id="boton-cambiar" 
+                    class="w-full bg-blue-600 text-white p-3 rounded font-semibold hover:bg-blue-700">
+                <i class="fas fa-save mr-2"></i>Cambiar Contraseña
+            </button>
+
+            <!--Volver login-->
+            <div class="text-center">
+                <a href="/login" class="text-blue-600 hover:underline text-sm">
+                    ← Volver al Login
+                </a>
+            </div>
+        </form>
+
+        <div id="cargando" class="hidden text-center mt-4">
+            <div class="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+            <p class="text-gray-600 text-sm mt-1">Procesando...</p>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { 
+            getAuth, 
+            confirmPasswordReset,
+            verifyPasswordResetCode
+        } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+        const configuracionFirebase = {
+            apiKey: "AIzaSyAV2CxG_nc2F-pdiQ2CiCEmBXUneH5RibE",
+            authDomain: "movie-catalogo.firebaseapp.com",
+            projectId: "movie-catalogo",
+            messagingSenderId: "1022078354140",
+            appId: "1:1022078354140:web:487f91b170d16eecbb2a19"
+        };
+
+        const app = initializeApp(configuracionFirebase);
+        const autenticacion = getAuth(app);
+
+        class AplicacionReset {
+            constructor() {
+                this.codigo = this.obtenerCodigoUrl();
+                this.iniciar();
+            }
+
+            iniciar() {
+                if (!this.codigo) {
+                    this.mostrarError('El enlace no es válido o ya expiró.');
+                    return;
+                }
+                
+                document.getElementById('formulario-reset').addEventListener('submit', (e) => this.cambiarContraseña(e));
+                this.verificarCodigo();
+            }
+
+            obtenerCodigoUrl() {
+                const parametros = new URLSearchParams(window.location.search);
+                return parametros.get('oobCode');
+            }
+
+            async verificarCodigo() {
+                try {
+                    await verifyPasswordResetCode(autenticacion, this.codigo);
+                } catch (error) {
+                    this.mostrarError('El enlace ya no es válido.');
+                }
+            }
+
+            async cambiarContraseña(e) {
+                e.preventDefault();
+                this.mostrarCargando(true);
+
+                const nueva = document.getElementById('nueva-contraseña').value;
+                const confirmar = document.getElementById('confirmar-contraseña').value;
+
+                if (!nueva || !confirmar) {
+                    this.mostrarError('Completa ambos campos');
+                    this.mostrarCargando(false);
+                    return;
+                }
+
+                if (nueva.length < 6) {
+                    this.mostrarError('La contraseña debe tener al menos 6 letras');
+                    this.mostrarCargando(false);
+                    return;
+                }
+
+                if (nueva !== confirmar) {
+                    this.mostrarError('Las contraseñas no son iguales');
+                    this.mostrarCargando(false);
+                    return;
+                }
+
+                try {
+                    await confirmPasswordReset(autenticacion, this.codigo, nueva);
+                    this.mostrarExito('¡Contraseña cambiada! Volviendo al login...');
+                    
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 2000);
+                    
+                } catch (error) {
+                    let mensaje = 'Error al cambiar contraseña';
+                    
+                    if (error.code === 'auth/expired-action-code') {
+                        mensaje = 'El enlace ya expiró. Pide uno nuevo.';
+                    } else if (error.code === 'auth/invalid-action-code') {
+                        mensaje = 'El enlace no es válido.';
+                    } else if (error.code === 'auth/weak-password') {
+                        mensaje = 'La contraseña es muy débil.';
+                    }
+                    
+                    this.mostrarError(mensaje);
+                } finally {
+                    this.mostrarCargando(false);
+                }
+            }
+
+            mostrarError(mensaje) {
+                const div = document.getElementById('mensaje-error');
+                div.textContent = mensaje;
+                div.classList.remove('hidden');
+            }
+
+            mostrarExito(mensaje) {
+                const div = document.getElementById('mensaje-exito');
+                div.textContent = mensaje;
+                div.classList.remove('hidden');
+            }
+
+            mostrarCargando(mostrar) {
+                const cargando = document.getElementById('cargando');
+                const boton = document.getElementById('boton-cambiar');
+                
+                if (mostrar) {
+                    cargando.classList.remove('hidden');
+                    boton.disabled = true;
+                } else {
+                    cargando.classList.add('hidden');
+                    boton.disabled = false;
+                }
+            }
+        }
+
+        new AplicacionReset();
+    </script>
+</body>
+</html>

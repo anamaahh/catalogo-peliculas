@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prueba Login y Películas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-6">
+    <div class="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
+        <h1 class="text-2xl font-bold text-center mb-6">Prueba Login y Películas</h1>
+
+        <!--Login-->
+        <div class="mb-8">
+            <h2 class="text-lg font-semibold mb-3">Iniciar Sesión</h2>
+            <input type="email" id="correo" placeholder="Tu correo" class="w-full p-2 border rounded mb-2">
+            <input type="password" id="contraseña" placeholder="Tu contraseña" class="w-full p-2 border rounded mb-3">
+            <button onclick="entrar()" class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700">
+                Entrar
+            </button>
+        </div>
+
+        <!--Agregar pelocula-->
+        <div>
+            <h2 class="text-lg font-semibold mb-3">Agregar Película</h2>
+            <input type="text" id="titulo" placeholder="Título" class="w-full p-2 border rounded mb-2">
+            <input type="text" id="año" placeholder="Año" class="w-full p-2 border rounded mb-2">
+            <input type="text" id="director" placeholder="Director" class="w-full p-2 border rounded mb-2">
+            <input type="text" id="genero" placeholder="Género" class="w-full p-2 border rounded mb-3">
+            <button onclick="agregarPelicula()" class="w-full bg-green-600 text-white p-2 rounded hover:bg-green-700">
+                Agregar Película
+            </button>
+        </div>
+
+        <!--Resultado-->
+        <p id="resultado" class="mt-4 p-2 bg-gray-50 rounded text-sm"></p>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.2.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.2.0/firebase-auth.js";
+
+        const configFirebase = {
+            apiKey: "AIzaSyAV2CxG_nc2F-pdiQ2CiCEmBXUneH5RibE",
+            authDomain: "movie-catalogo.firebaseapp.com",
+            projectId: "movie-catalogo",
+            storageBucket: "movie-catalogo.appspot.com",
+            messagingSenderId: "1022078354140",
+            appId: "1:1022078354140:web:487f91b170d16eecbb2a19"
+        };
+
+        const app = initializeApp(configFirebase);
+        const auth = getAuth(app);
+
+        let tokenActual = null;
+
+        // Función para entrar
+        window.entrar = function() {
+            const correo = document.getElementById("correo").value;
+            const contraseña = document.getElementById("contraseña").value;
+
+            signInWithEmailAndPassword(auth, correo, contraseña)
+            .then(async usuario => {
+                document.getElementById("resultado").innerText = "✅ Entraste: " + usuario.user.email;
+                tokenActual = await usuario.user.getIdToken();
+            })
+            .catch(error => {
+                document.getElementById("resultado").innerText = "❌ Error: " + error.message;
+            });
+        }
+
+        // Función para agregar película
+        window.agregarPelicula = async function() {
+            if (!tokenActual) {
+                document.getElementById("resultado").innerText = "⚠️ Primero entra con tu cuenta";
+                return;
+            }
+
+            const datosPelicula = {
+                title: document.getElementById("titulo").value,
+                year: document.getElementById("año").value,
+                director: document.getElementById("director").value,
+                genre: document.getElementById("genero").value
+            };
+
+            try {
+                const respuesta = await fetch("/movies", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + tokenActual
+                    },
+                    body: JSON.stringify(datosPelicula)
+                });
+                
+                const datos = await respuesta.json();
+                document.getElementById("resultado").innerText = "🎬 " + JSON.stringify(datos);
+            } catch (error) {
+                document.getElementById("resultado").innerText = "❌ Error: " + error;
+            }
+        }
+    </script>
+</body>
+</html>
